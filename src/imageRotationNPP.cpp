@@ -47,6 +47,8 @@
 #include <helper_cuda.h>
 #include <helper_string.h>
 
+#include <cmath>
+
 bool printfNPPinfo(int argc, char *argv[])
 {
     const NppLibraryVersion *libVer = nppGetLibVersion();
@@ -157,12 +159,18 @@ int main(int argc, char *argv[])
         // create struct with the ROI size
         NppiSize oSrcSize = {(int)oDeviceSrc.width(), (int)oDeviceSrc.height()};
         NppiPoint oSrcOffset = {0, 0};
-        NppiSize oSizeROI = {(int)oDeviceSrc.width(), (int)oDeviceSrc.height()};
+        NppiRect oSrcROI = {oSrcOffset.x, oSrcOffset.y, oSrcSize.width, oSrcSize.height};
 
         // Calculate the bounding box of the rotated image
         NppiRect oBoundingBox;
         double angle = 45.0; // Rotation angle in degrees
-        NPP_CHECK_NPP(nppiGetRotateBound(oSrcSize, angle, &oBoundingBox));
+        // NPP_CHECK_NPP(nppiGetRotateBound(oSrcROI, angle, &oBoundingBox));
+        double aBoundingBox[2][2];
+        NPP_CHECK_NPP(nppiGetRotateBound(oSrcROI, aBoundingBox, angle, 0, 0));
+        oBoundingBox.width = ( int )ceil( fabs( aBoundingBox[1][0] - aBoundingBox[0][0] ) );
+        oBoundingBox.height = ( int )ceil( fabs( aBoundingBox[1][1] - aBoundingBox[0][1] ) );
+        oBoundingBox.x = ( int )ceil( fabs( aBoundingBox[0][0] ) );
+        oBoundingBox.y = ( int )ceil( fabs( aBoundingBox[0][1] ) );
 
         // allocate device image for the rotated image
         npp::ImageNPP_8u_C1 oDeviceDst(oBoundingBox.width, oBoundingBox.height);
@@ -170,11 +178,24 @@ int main(int argc, char *argv[])
         // Set the rotation point (center of the image)
         NppiPoint oRotationCenter = {(int)(oSrcSize.width / 2), (int)(oSrcSize.height / 2)};
 
+        // 1. Declare a CUDA stream handle
+        cudaStream_t hStream = NULL;
+
+        // 2. Create the CUDA stream
+        // This creates an asynchronous execution queue on the GPU.
+        std::cout << "Creating CUDA stream..." << std::endl;
+        cudaStreamCreate(&hStream);
+
+        // 3. Declare and populate the NppStreamContext
+        // This is the main step to "get" the context.
+        NppStreamContext nppStreamCtx;
+        nppStreamCtx.hStream = hStream;
+
         // run the rotation
-        NPP_CHECK_NPP(nppiRotate_8u_C1R(
-            oDeviceSrc.data(), oSrcSize, oDeviceSrc.pitch(), oSrcOffset,
-            oDeviceDst.data(), oDeviceDst.pitch(), oBoundingBox, angle, oRotationCenter,
-            NPPI_INTER_NN));
+        NPP_CHECK_NPP(nppiRotate_8u_C1R_Ctx(
+            oDeviceSrc.data(), oSrcSize, oDeviceSrc.pitch(), oSrcROI,
+            oDeviceDst.data(), oDeviceDst.pitch(), oBoundingBox, angle, 0, 0,  //oRotationCenter,
+            NPPI_INTER_NN, nppStreamCtx));
 
         // declare a host image for the result
         npp::ImageCPU_8u_C1 oHostDst(oDeviceDst.size());
