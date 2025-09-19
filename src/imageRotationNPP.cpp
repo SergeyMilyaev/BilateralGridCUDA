@@ -167,13 +167,19 @@ int main(int argc, char *argv[])
         // NPP_CHECK_NPP(nppiGetRotateBound(oSrcROI, angle, &oBoundingBox));
         double aBoundingBox[2][2];
         NPP_CHECK_NPP(nppiGetRotateBound(oSrcROI, aBoundingBox, angle, 0, 0));
+        std::cout << "Bounding box: ("
+                  << aBoundingBox[0][0] << "," << aBoundingBox[0][1] << ") ("
+                  << aBoundingBox[1][0] << "," << aBoundingBox[1][1] << ")\n";
         oBoundingBox.width = ( int )ceil( fabs( aBoundingBox[1][0] - aBoundingBox[0][0] ) );
         oBoundingBox.height = ( int )ceil( fabs( aBoundingBox[1][1] - aBoundingBox[0][1] ) );
-        oBoundingBox.x = ( int )ceil( fabs( aBoundingBox[0][0] ) );
-        oBoundingBox.y = ( int )ceil( fabs( aBoundingBox[0][1] ) );
+        oBoundingBox.x = 0; //( int )ceil( fabs( aBoundingBox[0][0] ) );
+        oBoundingBox.y = 0; //( int )ceil( fabs( aBoundingBox[0][1] ) );
 
         // allocate device image for the rotated image
         npp::ImageNPP_8u_C1 oDeviceDst(oBoundingBox.width, oBoundingBox.height);
+
+        double nShiftX = -aBoundingBox[0][0];
+        double nShiftY = -aBoundingBox[0][1];
 
         // Set the rotation point (center of the image)
         NppiPoint oRotationCenter = {(int)(oSrcSize.width / 2), (int)(oSrcSize.height / 2)};
@@ -194,7 +200,7 @@ int main(int argc, char *argv[])
         // run the rotation
         NPP_CHECK_NPP(nppiRotate_8u_C1R_Ctx(
             oDeviceSrc.data(), oSrcSize, oDeviceSrc.pitch(), oSrcROI,
-            oDeviceDst.data(), oDeviceDst.pitch(), oBoundingBox, angle, 0, 0,  //oRotationCenter,
+            oDeviceDst.data(), oDeviceDst.pitch(), oBoundingBox, angle, nShiftX, nShiftY,  //oRotationCenter,
             NPPI_INTER_NN, nppStreamCtx));
 
         // declare a host image for the result
