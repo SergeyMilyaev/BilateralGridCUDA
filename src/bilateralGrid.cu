@@ -1,5 +1,4 @@
 #include "bilateralGrid.h"
-#include <cstdio>
 
 __global__ void splat_kernel(const unsigned char* inp_img, int inp_img_width, int inp_img_height, int inp_img_pitch,
                 float* grid_value_sum, float* grid_weight_sum, int grid_width, int grid_height, int grid_depth,
@@ -17,15 +16,13 @@ __global__ void splat_kernel(const unsigned char* inp_img, int inp_img_width, in
     int grid_y = (int) roundf((float) y / scale_spatial);
     int grid_r = (int) roundf(inp_val / scale_range);
 
-    // clamp
     grid_x = min(max(grid_x,0), grid_width-1);
     grid_y = min(max(grid_y,0), grid_height-1);
     grid_r = min(max(grid_r,0), grid_depth-1);
 
-    // grid index
     int idx = (grid_r * grid_height + grid_y) * grid_width + grid_x;
 
-    // atomic add
+    // update grid sum values and weights
     atomicAdd(&grid_value_sum[idx], inp_val);
     atomicAdd(&grid_weight_sum[idx], 1.0f);
 }
@@ -41,24 +38,9 @@ void slice_kernel(const unsigned char* inp_img, int inp_img_width, int inp_img_h
     if (x >= inp_img_width || y >= inp_img_height) return;
 
     float val = (float) inp_img[y * inp_img_pitch + x];
-    // continuous grid coordinate
     float grid_x_f = (float) x / (float) scale_spatial;
     float grid_y_f = (float) y / (float) scale_spatial;
     float grid_r_f = (float) val / (float) scale_range;
-
-    // int gx = (int) roundf(grid_x_f);
-    // int gy = (int) roundf(grid_y_f);
-    // int gr = (int) roundf(grid_r_f);
-
-    // gx = min(max(gx,0), grid_width-1);
-    // gy = min(max(gy,0), grid_height-1);
-    // gr = min(max(gr,0), grid_depth-1);
-
-    // float vsum_interp0 = grid_value_sum[(gr*grid_height+gy)*grid_width+gx];
-    // float wsum_interp0 = grid_weight_sum[(gr*grid_height+gy)*grid_width+gx];
-
-    // out_img[y * out_img_pitch + x] = (unsigned char) min(max(vsum_interp0 / max(wsum_interp0, 1.f), 0.f), 255.f);
-    // return;
 
     // do trilinear interpolation around (grid_x_f, grid_y_f, grid_r_f)
     int gx0 = (int) floorf(grid_x_f);
@@ -75,13 +57,9 @@ void slice_kernel(const unsigned char* inp_img, int inp_img_width, int inp_img_h
     gr0 = min(max(gr0, 0), grid_depth-1);
     gr1 = min(max(gr1, 0), grid_depth-1);
 
-    // interpolation weights
     float dx = grid_x_f - (float) gx0;
     float dy = grid_y_f - (float) gy0;
     float dr = grid_r_f - (float) gr0;
-
-    // float vsum_interp = 0.0f;
-    // float wsum_interp = 0.0f;
 
     auto v000 = grid_value_sum[(gr0*grid_height+gy0)*grid_width+gx0];
     auto v001 = grid_value_sum[(gr0*grid_height+gy0)*grid_width+gx1];
@@ -119,36 +97,8 @@ void slice_kernel(const unsigned char* inp_img, int inp_img_width, int inp_img_h
     c1 = c10*(1.0f-dy) + c11*dy;
     float wsum_interp = c0*(1.0f-dr) + c1*dr;
 
-    // for (int i = 0; i < 2; ++i) {
-    //     for (int j = 0; j < 2; ++j) {
-    //         for (int k = 0; k < 2; ++k) {
-    //             int gx = gx0 + i;
-    //             int gy = gy0 + j;
-    //             int gr = gr0 + k;
-
-    //             // clamp coordinates
-    //             gx = min(max(gx, 0), grid_width - 1);
-    //             gy = min(max(gy, 0), grid_height - 1);
-    //             gr = min(max(gr, 0), grid_depth - 1);
-
-    //             int idx = (gr * grid_height + gy) * grid_width + gx;
-                
-    //             float v = grid_value_sum[idx];
-    //             float w = grid_weight_sum[idx];
-
-    //             float interp_weight = (i == 0 ? 1 - wx : wx) *
-    //                                   (j == 0 ? 1 - wy : wy) *
-    //                                   (k == 0 ? 1 - wr : wr);
-                
-    //             vsum_interp += v * interp_weight;
-    //             wsum_interp += w * interp_weight;
-    //         }
-    //     }
-    // }
-
-    out_img[y * out_img_pitch + x] = (unsigned char) min(max(vsum_interp / max(wsum_interp, 1.f), 0.f), 255.f);
+    out_img[y*out_img_pitch+x] = (unsigned char) min(max(vsum_interp / max(wsum_interp, 1.f), 0.f), 255.f);
 }
-
 
 __host__ void bilateralGridFilter(const unsigned char* d_input, int inp_img_width, int inp_img_height, int inp_img_pitch,
                         unsigned char* d_output, int out_img_pitch, float scale_spatial, float scale_range)
@@ -157,9 +107,7 @@ __host__ void bilateralGridFilter(const unsigned char* d_input, int inp_img_widt
     int grid_width = (inp_img_width + scale_spatial - 1) / scale_spatial;
     int grid_height = (inp_img_height + scale_spatial - 1) / scale_spatial;
     int grid_depth = (256 + scale_range - 1) / scale_range;
-    printf("Grid dimensions: %d x %d x %d\n", grid_width, grid_height, grid_depth);
 
-    // Allocate grid memory
     size_t grid_size = grid_width * grid_height * grid_depth * sizeof(float);
     float* d_grid_value_sum;
     float* d_grid_weight_sum;
@@ -177,13 +125,6 @@ __host__ void bilateralGridFilter(const unsigned char* d_input, int inp_img_widt
                                         scale_spatial, scale_range);
     cudaDeviceSynchronize();
 
-    // for (int i = 0; i < grid_size / sizeof(float); i += grid_width * grid_height) {
-    //     float val_sum, weight_sum;
-    //     cudaMemcpy(&val_sum, &d_grid_value_sum[i], sizeof(float), cudaMemcpyDeviceToHost);
-    //     cudaMemcpy(&weight_sum, &d_grid_weight_sum[i], sizeof(float), cudaMemcpyDeviceToHost);
-    //     printf("Grid cell %d: value sum = %f, weight sum = %f\n", i / (grid_width * grid_height), val_sum, weight_sum);
-    // }
-
     // Launch slice kernel
     slice_kernel<<<gridSize, blockSize>>>(d_input, inp_img_width, inp_img_height, inp_img_pitch,
                                         d_output, out_img_pitch, 
@@ -191,18 +132,6 @@ __host__ void bilateralGridFilter(const unsigned char* d_input, int inp_img_widt
                                         scale_spatial, scale_range);
     cudaDeviceSynchronize();
 
-    // for (int i = 0; i < 3 * scale_spatial; ++i) 
-    // {
-    //     for (int j = 0; j < 3 * scale_spatial; ++j) 
-    //     {
-    //         unsigned char pixel;
-    //         cudaMemcpy(&pixel, &d_output[i * out_img_pitch + j], sizeof(unsigned char), cudaMemcpyDeviceToHost);
-    //         printf("%3d ", pixel);
-    //     }
-    //     printf("\n");
-    // }
-
-    // Free grid memory
     cudaFree(d_grid_value_sum);
     cudaFree(d_grid_weight_sum);
 }

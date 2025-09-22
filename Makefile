@@ -59,7 +59,8 @@ $(TARGET): $(SRC)
 
 # Rule for running the application
 run: $(TARGET)
-	./$(TARGET) --input $(DATA_DIR)/Lena.png --output $(DATA_DIR)/Lena_filtered.ppm
+	./$(TARGET) -mask_size=32
+# --input $(DATA_DIR)/Lena.png --output $(DATA_DIR)/Lena_filtered.ppm
 
 # Clean up
 clean:
