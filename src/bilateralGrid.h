@@ -55,14 +55,4 @@ __host__ void bilateralGridFilter(
     float scale_spatial,
     float scale_range);
 
-// Gaussian blur over planar channels stored in a 3D grid.
-__global__ void gaussianBlurChannelsPlanarKernel(
-    const float* input,
-    float* output,
-    int width,
-    int height,
-    int depth,
-    const float* kernelWeights,
-    int kernelRadius);
-
 #endif  // BILATERAL_GRID_CUDA_SRC_BILATERALGRID_H_
