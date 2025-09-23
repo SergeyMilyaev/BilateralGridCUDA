@@ -1,123 +1,98 @@
-# Image Rotation using NVIDIA NPP with CUDA
+# Bilateral Grid Filtering (NPP + CUDA)
 
 ## Overview
 
-This project demonstrates the use of NVIDIA Performance Primitives (NPP) library with CUDA to perform image rotation. The goal is to utilize GPU acceleration to efficiently rotate a given image by a specified angle, leveraging the computational power of modern GPUs. The project is a part of the CUDA at Scale for the Enterprise course and serves as a template for understanding how to implement basic image processing operations using CUDA and NPP.
+This repository implements a bilateral filter for single channel grayscale images in two ways:
+- Using NVIDIA Performance Primitives (NPP) (nppiFilterBilateralGaussBorder)
+- Using a custom GPU bilateral grid [1] implementation (bilateral grid splat/slice kernels)
 
-## Code Organization
+It is meant as an example of using NPP together with a CUDA custom kernel to compare approaches.
 
-```bin/```
-This folder should hold all binary/executable code that is built automatically or manually. Executable code should have use the .exe extension or programming language-specific extension.
-
-```data/```
-This folder should hold all example data in any format. If the original data is rather large or can be brought in via scripts, this can be left blank in the respository, so that it doesn't require major downloads when all that is desired is the code/structure.
-
-```lib/```
-Any libraries that are not installed via the Operating System-specific package manager should be placed here, so that it is easier for inclusion/linking.
-
-```src/```
-The source code should be placed here in a hierarchical fashion, as appropriate.
-
-```README.md```
-This file should hold the description of the project so that anyone cloning or deciding if they want to clone this repository can understand its purpose to help with their decision.
-
-```INSTALL```
-This file should hold the human-readable set of instructions for installing the code so that it can be executed. If possible it should be organized around different operating systems, so that it can be done by as many people as possible with different constraints.
-
-```Makefile or CMAkeLists.txt or build.sh```
-There should be some rudimentary scripts for building your project's code in an automatic fashion.
-
-```run.sh```
-An optional script used to run your executable code, either with or without command-line arguments.
-
-## Key Concepts
-
-Performance Strategies, Image Processing, NPP Library
-
-## Supported SM Architectures
-
-[SM 3.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 3.7 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 5.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 6.1 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.2 ](https://developer.nvidia.com/cuda-gpus)  [SM 7.5 ](https://developer.nvidia.com/cuda-gpus)  [SM 8.0 ](https://developer.nvidia.com/cuda-gpus)  [SM 8.6 ](https://developer.nvidia.com/cuda-gpus)
-
-## Supported OSes
-
-Linux, Windows
-
-## Supported CPU Architecture
-
-x86_64, ppc64le, armv7l
-
-## CUDA APIs involved
-
-## Dependencies needed to build/run
-[FreeImage](../../README.md#freeimage), [NPP](../../README.md#npp)
-
-## Prerequisites
-
-Download and install the [CUDA Toolkit 11.4](https://developer.nvidia.com/cuda-downloads) for your corresponding platform.
-Make sure the dependencies mentioned in [Dependencies]() section above are installed.
-
-## Build and Run
-
-### Windows
-The Windows samples are built using the Visual Studio IDE. Solution files (.sln) are provided for each supported version of Visual Studio, using the format:
+## Repository layout
 ```
-*_vs<version>.sln - for Visual Studio <version>
+- bin/                - build output (executable: bin/bilateralGrid)
+- data/               - input/output images and image list (see below)
+  - input/            - input images referenced by the list file
+  - output/           - saved results (NPP and grid filtered images)
+  - img_list_attribution.txt - newline list of input filenames (one per line)
+- src/                - source code (main.cpp, bilateralGrid.cu/h)
+- Makefile            - build rules (uses nvcc)
+- run.sh              - simple wrapper to run the binary with a default flag
 ```
-Each individual sample has its own set of solution files in its directory:
 
-To build/examine all the samples at once, the complete solution files should be used. To build/examine a single sample, the individual sample solution files should be used.
-> **Note:** Some samples require that the Microsoft DirectX SDK (June 2010 or newer) be installed and that the VC++ directory paths are properly set up (**Tools > Options...**). Check DirectX Dependencies section for details."
+## Dependencies
+- CUDA Toolkit (nvcc, runtime) with NVIDIA Performance Primitives (NPP) development libraries. Tested with CUDA toolkit 12.8.
+- FreeImage (used by helper image I/O in the sample) and image libraries:
+    ```bash
+    sudo apt-get install libfreeimage3 libfreeimage-dev
 
-### Linux
-The Linux samples are built using makefiles. To use the makefiles, change the current directory to the sample directory you wish to build, and run make:
-```
-$ cd <sample_dir>
-$ make
-```
-The samples makefiles can take advantage of certain options:
-*  **TARGET_ARCH=<arch>** - cross-compile targeting a specific architecture. Allowed architectures are x86_64, ppc64le, armv7l.
-    By default, TARGET_ARCH is set to HOST_ARCH. On a x86_64 machine, not setting TARGET_ARCH is the equivalent of setting TARGET_ARCH=x86_64.<br/>
-`$ make TARGET_ARCH=x86_64` <br/> `$ make TARGET_ARCH=ppc64le` <br/> `$ make TARGET_ARCH=armv7l` <br/>
-    See [here](http://docs.nvidia.com/cuda/cuda-samples/index.html#cross-samples) for more details.
-*   **dbg=1** - build with debug symbols
+    sudo apt-get install libpng-dev libjpeg-dev libtiff-dev
     ```
-    $ make dbg=1
-    ```
-*   **SMS="A B ..."** - override the SM architectures for which the sample will be built, where `"A B ..."` is a space-delimited list of SM architectures. For example, to generate SASS for SM 50 and SM 60, use `SMS="50 60"`.
-    ```
-    $ make SMS="50 60"
-    ```
+- CUDA Samples (common utilities) - required for helper_cuda.h and helper_string.h used by the sample. Clone the [CUDA Samples](https://github.com/NVIDIA/cuda-samples) git repository in the same root directory with this project or adjust the paths in Makefile.
 
-*  **HOST_COMPILER=<host_compiler>** - override the default g++ host compiler. See the [Linux Installation Guide](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#system-requirements) for a list of supported host compilers.
-```
-    $ make HOST_COMPILER=g++
-```
+## Build
+The Makefile compiles the project with nvcc. Edit INCLUDES/LDFLAGS in the Makefile if your CUDA or library locations differ.
 
-
-## Running the Program
-After building the project, you can run the program using the following command:
-
+To build:
 ```bash
-Copy code
-make run
+make
 ```
 
-This command will execute the compiled binary, rotating the input image (Lena.png) by 45 degrees, and save the result as Lena_rotated.png in the data/ directory.
-
-If you wish to run the binary directly with custom input/output files, you can use:
-
+To build with debug symbols:
 ```bash
-- Copy code
-./bin/imageRotationNPP --input data/Lena.png --output data/Lena_rotated.png
+make dbg=1
 ```
 
-- Cleaning Up
-To clean up the compiled binaries and other generated files, run:
+## Run
 
+A small wrapper script is provided to run the sample with sensible defaults:
 
+- run.sh invokes the binary as:
+  ./bin/bilateralGrid -mask_size=32 -filelist="data/img_list_attribution.txt" -input_dir="data/input/" -output_dir="data/output/"
+
+The program can also be run directly. The executable accepts the following command-line options (defaults are shown where applicable):
+
+- -filter_radius=<int>    NPP bilateral filter radius (default: 5; note: run.sh sets this to 32)
+- -sigma_v=<float>        NPP bilateral filter value sigma (default: 50.0)
+- -sigma_p=<float>        NPP bilateral filter position sigma (default: 50.0)
+- -grid_sigma_s=<float>   Bilateral grid spatial sigma (default: 16.0)
+- -grid_sigma_r=<float>   Bilateral grid range sigma (default: 32.0)
+- -filelist=<path>        Path to the image list file (default: data/img_list_attribution.txt)
+- -input_dir=<dir>        Directory containing input images (default: data/input/)
+- -output_dir=<dir>       Directory to write output images (default: data/output/)
+- -help                   Print usage
+
+Examples:
 ```bash
-- Copy code
+# Use the wrapper script (uses mask_size=32 by default)
+./run.sh
+
+# Run directly with custom parameters
+./bin/bilateralGrid -mask_size=5 -filelist="data/img_list_attribution.txt" -input_dir="data/input/" -output_dir="data/output/"
+```
+
+Input list format
+Each non-empty line in the file list (default: data/img_list_attribution.txt) should contain an input filename relative to the input directory. For example:
+```
+lena.png
+myphoto.pgm
+```
+
+Output files
+For each input image with a filename {name} the program writes:
+- data/output/{name}_npp_filtered.pgm
+- data/output/{name}_grid_filtered.pgm
+
+## Notes
+- Make sure NPP and FreeImage libs are present on your linker path. The Makefile links a number of npp* libraries and -lfreeimage; update LDFLAGS if your distro places them elsewhere.
+- The example main program creates a CUDA stream and times both the NPP filter and the custom bilateral grid filter for each image in the list.
+- The project uses npp::Image helpers for loading/saving images; supported input formats depend on FreeImage.
+
+## Cleaning
+To remove built binaries:
+```bash
 make clean
 ```
 
-This will remove all files in the bin/ directory.
+## References
+1. Chen, Jiawen, Sylvain Paris, and Frédo Durand. "Real-time edge-aware image processing with the bilateral grid." ACM Transactions on Graphics (TOG) 26.3 (2007): 103-es.
